@@ -1,103 +1,366 @@
+"use client";
 import Image from "next/image";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+// Define the base URL - update this to match your backend URL
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+interface FormData {
+  email: string;
+  password: string;
+  name?: string;
+  confirmPassword?: string;
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [isSignIn, setIsSignIn] = useState(true);
+  const [formData, setFormData] = useState<FormData>({
+    email: "",
+    password: "",
+    name: "",
+    confirmPassword: "",
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    // Clear error when user starts typing
+    if (error) setError("");
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    console.log(
+      "Attempting to sign in with URL:",
+      `${BASE_URL}/api/auth/login`
+    );
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      console.log("Response status:", response.status);
+      console.log("Response headers:", response.headers);
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response received:", text);
+        setError(
+          `Server error: Expected JSON but received ${
+            contentType || "unknown content type"
+          }`
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Store token in sessionStorage
+        if (typeof window !== "undefined" && data.token) {
+          try {
+            sessionStorage.setItem("auth_token", data.token);
+            if (data.token_type) {
+              sessionStorage.setItem("token_type", data.token_type);
+            }
+            if (data.user) {
+              sessionStorage.setItem("auth_user", JSON.stringify(data.user));
+            }
+          } catch (e) {
+            console.warn("Failed to persist auth in sessionStorage:", e);
+          }
+        }
+
+        console.log("Sign in successful:", data);
+        router.push("/dashboard");
+      } else {
+        setError(data.message || "Sign in failed. Please try again.");
+      }
+    } catch (err) {
+      console.error("Sign in error:", err);
+      if (err instanceof Error && err.message.includes("JSON")) {
+        setError(
+          "Server returned invalid response. Please check if your backend is running and the URL is correct."
+        );
+      } else {
+        setError("Network error. Please check your connection and try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    // Validate passwords match
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match.");
+      setIsLoading(false);
+      return;
+    }
+
+    console.log(
+      "Attempting to sign up with URL:",
+      `${BASE_URL}/api/auth/register`
+    );
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          password_confirmation: formData.confirmPassword,
+        }),
+      });
+
+      console.log("Response status:", response.status);
+      console.log("Response headers:", response.headers);
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response received:", text);
+        setError(
+          `Server error: Expected JSON but received ${
+            contentType || "unknown content type"
+          }`
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log("Sign up successful:", data);
+
+        // Automatically sign in after successful registration
+        // or redirect to sign in
+        setIsSignIn(true);
+        setError("");
+        setFormData({
+          email: formData.email, // Keep email for convenience
+          password: "",
+          name: "",
+          confirmPassword: "",
+        });
+
+        // Show success message (you might want to add a success state)
+        alert("Account created successfully! Please sign in.");
+      } else {
+        setError(data.message || "Sign up failed. Please try again.");
+      }
+    } catch (err) {
+      console.error("Sign up error:", err);
+      if (err instanceof Error && err.message.includes("JSON")) {
+        setError(
+          "Server returned invalid response. Please check if your backend is running and the URL is correct."
+        );
+      } else {
+        setError("Network error. Please check your connection and try again.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    if (isSignIn) {
+      handleSignIn(e);
+    } else {
+      handleSignUp(e);
+    }
+  };
+
+  const handleTabSwitch = (signInMode: boolean) => {
+    setIsSignIn(signInMode);
+    setError("");
+    setFormData({
+      email: "",
+      password: "",
+      name: "",
+      confirmPassword: "",
+    });
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center p-8 font-montserrat">
+      <div className="w-full max-w-md">
+        <div className="mb-8 flex flex-col items-center">
+          <h1 className="text-4xl font-bold mb-2">PIC-AI-SSO</h1>
+          <p className="text-gray-600 dark:text-gray-400 text-center">
+            {isSignIn ? "Sign in to your account" : "Create a new account"}
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
+          <div className="flex mb-6">
+            <button
+              className={`flex-1 py-2 text-center ${
+                isSignIn
+                  ? "font-bold border-b-2 border-blue-500"
+                  : "text-gray-500"
+              }`}
+              onClick={() => handleTabSwitch(true)}
+            >
+              Sign In
+            </button>
+            <button
+              className={`flex-1 py-2 text-center ${
+                !isSignIn
+                  ? "font-bold border-b-2 border-blue-500"
+                  : "text-gray-500"
+              }`}
+              onClick={() => handleTabSwitch(false)}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
+              {error}
+            </div>
+          )}
+
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your email"
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            {!isSignIn && (
+              <div>
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter your full name"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium mb-1"
+              >
+                Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your password"
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            {!isSignIn && (
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Confirm your password"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            >
+              {isLoading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  {isSignIn ? "Signing In..." : "Signing Up..."}
+                </div>
+              ) : isSignIn ? (
+                "Sign In"
+              ) : (
+                "Sign Up"
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
