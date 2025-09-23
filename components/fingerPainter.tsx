@@ -72,6 +72,10 @@ export default function FingerPainter() {
         const drawingCtx = drawingCanvas.getContext("2d")!;
         drawingCanvasRef.current = drawingCanvas;
 
+        // Create separate background and drawing layers
+        const backgroundCanvas = document.createElement("canvas");
+        const backgroundCtx = backgroundCanvas.getContext("2d")!;
+
         let prevX: number | null = null;
         let prevY: number | null = null;
         let brushColor = "#ff4d4d";
@@ -141,11 +145,24 @@ export default function FingerPainter() {
           canvas.height = video.videoHeight;
           drawingCanvas.width = canvas.width;
           drawingCanvas.height = canvas.height;
+          backgroundCanvas.width = canvas.width;
+          backgroundCanvas.height = canvas.height;
           btnX = Math.min(btnX, canvas.width - BTN_R);
           btnY = Math.min(btnY, canvas.height - BTN_R);
 
           clearBtnX = canvas.width - CLEAR_BTN_R - 20;
           clearBtnY = CLEAR_BTN_R + 20;
+
+          // Initialize background on background canvas
+          if (!backgroundImage) {
+            backgroundCtx.fillStyle = backgroundColor;
+            backgroundCtx.fillRect(
+              0,
+              0,
+              backgroundCanvas.width,
+              backgroundCanvas.height
+            );
+          }
         });
 
         // Load background from sessionStorage (if any) and draw it once
@@ -160,34 +177,34 @@ export default function FingerPainter() {
                 const img = new Image();
                 img.onload = () => {
                   setBackgroundImage(img);
-                  // Fit image to canvas
-                  drawingCtx.drawImage(
+                  // Draw image on background canvas
+                  backgroundCtx.drawImage(
                     img,
                     0,
                     0,
-                    drawingCanvas.width,
-                    drawingCanvas.height
+                    backgroundCanvas.width,
+                    backgroundCanvas.height
                   );
                 };
                 img.src = src;
               } else {
                 setBackgroundColor("#ffffff");
-                drawingCtx.fillStyle = "#ffffff";
-                drawingCtx.fillRect(
+                backgroundCtx.fillStyle = "#ffffff";
+                backgroundCtx.fillRect(
                   0,
                   0,
-                  drawingCanvas.width,
-                  drawingCanvas.height
+                  backgroundCanvas.width,
+                  backgroundCanvas.height
                 );
               }
             } else {
               setBackgroundColor("#ffffff");
-              drawingCtx.fillStyle = "#ffffff";
-              drawingCtx.fillRect(
+              backgroundCtx.fillStyle = "#ffffff";
+              backgroundCtx.fillRect(
                 0,
                 0,
-                drawingCanvas.width,
-                drawingCanvas.height
+                backgroundCanvas.width,
+                backgroundCanvas.height
               );
             }
           }
@@ -206,16 +223,14 @@ export default function FingerPainter() {
         });
 
         hands.onResults((results: any) => {
+          // Clear the overlay canvas
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          ctx.save();
-          // Do not draw the camera frame on the drawing canvas.
-          // The video is shown separately in the UI now.
-          if (MIRROR) {
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
-          }
-          ctx.restore();
+          // First, draw the background canvas
+          ctx.drawImage(backgroundCanvas, 0, 0);
+
+          // Then draw the drawing canvas (transparent drawings only)
+          ctx.drawImage(drawingCanvas, 0, 0);
 
           const now = performance.now();
 
@@ -232,6 +247,7 @@ export default function FingerPainter() {
             const { x: ix, y: iy } = mirrorXY(lms[8]);
             const { x: pxP, y: pyP } = mirrorXY(lms[20]);
 
+            // Selection logic (pinky up only)
             if (pinkyUp && !indexUp && !middleUp && !ringUp && !selectedImage) {
               if (!selectionActive) {
                 selectionActive = true;
@@ -242,6 +258,7 @@ export default function FingerPainter() {
               }
             }
 
+            // End selection
             if (
               selectionActive &&
               (!pinkyUp || indexUp || middleUp || ringUp)
@@ -264,22 +281,26 @@ export default function FingerPainter() {
               }
             }
 
+            // Move selection (pinky + index up)
             if (selectedImage && pinkyUp && indexUp && !middleUp && !ringUp) {
               selectedX = ix - selectedImage.width / 2;
               selectedY = iy - selectedImage.height / 2;
               isMovingSelection = true;
             }
 
+            // Place selection
             if (selectedImage && (!pinkyUp || !indexUp || middleUp || ringUp)) {
               drawingCtx.putImageData(selectedImage, selectedX, selectedY);
               selectedImage = null;
               isMovingSelection = false;
             }
 
+            // Clear button logic
             const dToClear = dist(ix, iy, clearBtnX, clearBtnY);
             if (dToClear <= CLEAR_BTN_R) {
               if (!clearTouchStartTime) clearTouchStartTime = performance.now();
               if (performance.now() - clearTouchStartTime >= 1000) {
+                // Clear only the drawing canvas, leave background intact
                 drawingCtx.clearRect(0, 0, canvas.width, canvas.height);
                 clearTouchStartTime = null;
               }
@@ -289,6 +310,7 @@ export default function FingerPainter() {
 
             const { x: px, y: py } = mirrorXY(lms[9]);
 
+            // Palette button logic
             const dToBtn = dist(ix, iy, btnX, btnY);
             const insideBtn = dToBtn <= BTN_R;
             if (insideBtn && indexUp) {
@@ -316,6 +338,7 @@ export default function FingerPainter() {
               lastTapTime = now;
             }
 
+            // Color selection
             if (paletteOpen && indexUp) {
               palettePositions().forEach(([cx, cy], i) => {
                 if (dist(ix, iy, cx, cy) <= bubbleR) {
@@ -325,6 +348,7 @@ export default function FingerPainter() {
               });
             }
 
+            // Drawing (index up only)
             if (indexUp && !middleUp && !ringUp && !pinkyUp) {
               let nearButton = dist(ix, iy, btnX, btnY) < BTN_R + 8;
               let nearBubble = false;
@@ -353,8 +377,11 @@ export default function FingerPainter() {
               prevX = prevY = null;
             }
 
+            // Erasing (3+ fingers up) - now just removes drawings, not background
             if (fingersUp >= 3) {
               const r = Math.max(60, brushSize * 6);
+
+              // Use destination-out to erase drawings only
               drawingCtx.save();
               drawingCtx.globalCompositeOperation = "destination-out";
               drawingCtx.beginPath();
@@ -362,14 +389,17 @@ export default function FingerPainter() {
               drawingCtx.fill();
               drawingCtx.restore();
 
+              // Draw eraser indicator on overlay
               ctx.beginPath();
               ctx.arc(px, py, r, 0, Math.PI * 2);
-              ctx.lineWidth = 2;
-              ctx.strokeStyle = "rgba(255,255,255,0.8)";
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = "rgba(255,100,100,0.8)";
+              ctx.setLineDash([10, 5]);
               ctx.stroke();
+              ctx.setLineDash([]);
             }
 
-            // Draw a more visible cursor that follows the index fingertip
+            // Draw cursor (follows index fingertip)
             ctx.save();
             // Outer glow
             ctx.beginPath();
@@ -379,22 +409,23 @@ export default function FingerPainter() {
             // Main cursor
             ctx.beginPath();
             ctx.arc(ix, iy, 8, 0, Math.PI * 2);
-            ctx.fillStyle = "#000000";
+            ctx.fillStyle = "#ffffff";
             ctx.fill();
             // Inner highlight
             ctx.beginPath();
             ctx.arc(ix, iy, 6, 0, Math.PI * 2);
             ctx.lineWidth = 2;
-            ctx.strokeStyle = "#ffffff";
+            ctx.strokeStyle = brushColor;
             ctx.stroke();
             // Center dot
             ctx.beginPath();
             ctx.arc(ix, iy, 2, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffffff";
+            ctx.fillStyle = brushColor;
             ctx.fill();
             ctx.restore();
           }
 
+          // Draw selection rectangle
           if (selectionActive && selectionStart && selectionEnd) {
             const x = Math.min(selectionStart.x, selectionEnd.x);
             const y = Math.min(selectionStart.y, selectionEnd.y);
@@ -409,19 +440,24 @@ export default function FingerPainter() {
             ctx.restore();
           }
 
-          // Paint solid background if provided and no background image was drawn
-          if (!backgroundImage) {
-            ctx.save();
-            ctx.fillStyle = backgroundColor;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.restore();
-          }
-          ctx.drawImage(drawingCanvas, 0, 0);
-
+          // Draw moving selection
           if (isMovingSelection && selectedImage) {
             ctx.putImageData(selectedImage, selectedX, selectedY);
+            // Add selection border
+            ctx.save();
+            ctx.strokeStyle = "rgba(0,255,255,0.8)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 2]);
+            ctx.strokeRect(
+              selectedX,
+              selectedY,
+              selectedImage.width,
+              selectedImage.height
+            );
+            ctx.restore();
           }
 
+          // Draw palette button
           ctx.save();
           ctx.shadowColor = "rgba(0,0,0,0.5)";
           ctx.shadowBlur = 8;
@@ -442,6 +478,7 @@ export default function FingerPainter() {
           ctx.fillStyle = "#111";
           ctx.fill();
 
+          // Draw palette colors
           if (paletteOpen) {
             palettePositions().forEach(([cx, cy], i) => {
               ctx.save();
@@ -461,6 +498,7 @@ export default function FingerPainter() {
             });
           }
 
+          // Draw clear button
           ctx.save();
           ctx.shadowColor = "rgba(0,0,0,0.5)";
           ctx.shadowBlur = 8;
@@ -476,6 +514,7 @@ export default function FingerPainter() {
           ctx.strokeStyle = "rgba(255,255,255,0.9)";
           ctx.stroke();
 
+          // Draw X in clear button
           ctx.beginPath();
           ctx.moveTo(clearBtnX - 10, clearBtnY - 10);
           ctx.lineTo(clearBtnX + 10, clearBtnY + 10);
@@ -502,7 +541,7 @@ export default function FingerPainter() {
     };
 
     initMediaPipe();
-  }, [brushSize]);
+  }, [brushSize, backgroundColor]);
 
   const handleCameraMouseDown = (e: React.MouseEvent) => {
     setIsDraggingCamera(true);
@@ -591,9 +630,9 @@ export default function FingerPainter() {
           onClick={() => {
             const drawingCanvas = drawingCanvasRef.current;
             if (drawingCanvas) {
-              drawingCanvas
-                .getContext("2d")!
-                .clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+              const ctx = drawingCanvas.getContext("2d")!;
+              // Clear only the drawing canvas, background stays intact
+              ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
             }
           }}
           className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm transition-colors"
@@ -602,8 +641,8 @@ export default function FingerPainter() {
         </button>
 
         <span className="text-xs text-gray-300 max-w-md">
-          Draw: index up only • Erase: open palm • Drag/tap palette to change
-          color
+          Draw: index up only • Erase: open palm • Select: pinky only • Move:
+          pinky+index • Drag/tap palette to change color
         </span>
       </div>
     </div>
