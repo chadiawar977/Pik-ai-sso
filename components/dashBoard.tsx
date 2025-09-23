@@ -583,7 +583,7 @@ export default function Dashboard() {
   };
 
   const filteredCanvases = canvases.filter((canvas) =>
-    canvas.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (canvas.name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
