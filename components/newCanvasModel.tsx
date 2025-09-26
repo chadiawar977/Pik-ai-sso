@@ -17,6 +17,7 @@ export default function NewCanvasModal({ onClose }: NewCanvasModalProps) {
     console.log("Uploading an image...");
     onClose();
   };
+  
 
   return (
     <div

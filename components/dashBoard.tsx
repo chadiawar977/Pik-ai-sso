@@ -236,13 +236,13 @@ const NewCanvasModal = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-
   const handleSubmit = async () => {
     if (!canvasName.trim()) return;
 
     setIsCreating(true);
     try {
       const temporaryId = Date.now();
+
       let thumbnailUrl: string | undefined = undefined;
       if (selectedFile) {
         thumbnailUrl = await new Promise<string>((resolve) => {
@@ -251,29 +251,30 @@ const NewCanvasModal = ({
           reader.readAsDataURL(selectedFile);
         });
       }
+
       const localCanvas = {
         id: temporaryId,
         name: canvasName,
         thumbnail: thumbnailUrl,
         createdAt: new Date().toISOString(),
         size: `${dimensions.width}x${dimensions.height}`,
-      } as any;
+      };
 
       onCreateCanvas(localCanvas);
-      try {
-        if (typeof window !== "undefined") {
-          const payload = {
-            image: thumbnailUrl || null,
-            imagePath: thumbnailUrl || null,
-            width: dimensions.width,
-            height: dimensions.height,
-          };
-          sessionStorage.setItem(
-            `temp_canvas_${temporaryId}`,
-            JSON.stringify(payload)
-          );
-        }
-      } catch {}
+
+      if (typeof window !== "undefined") {
+        const payload = {
+          name: canvasName,
+          image: thumbnailUrl || null, // ✅ store image directly here
+          width: dimensions.width,
+          height: dimensions.height,
+        };
+        sessionStorage.setItem(
+          `canvas_${temporaryId}`,
+          JSON.stringify(payload)
+        );
+      }
+
       router.push(`/canvas/${temporaryId}?temp=1`);
       onClose();
       setCanvasName("");
@@ -281,7 +282,6 @@ const NewCanvasModal = ({
       setSelectedFile(null);
     } catch (error) {
       console.error("Error creating canvas:", error);
-      // Handle network error
     } finally {
       setIsCreating(false);
     }
@@ -291,11 +291,22 @@ const NewCanvasModal = ({
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
+
+      // Auto-fill canvas name if not set
       if (!canvasName.trim()) {
         const baseName = file.name.replace(/\.[^/.]+$/, "");
         setCanvasName(baseName);
       }
       setCanvasType("upload");
+
+      // Store image in sessionStorage
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("uploaded_image", String(reader.result));
+        }
+      };
+      reader.readAsDataURL(file); // store as Base64 data URL
     }
   };
 
