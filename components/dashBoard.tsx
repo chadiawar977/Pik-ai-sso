@@ -149,17 +149,20 @@ const UserProfileDropdown = () => {
   );
 };
 
-// Canvas Card Component
+// Canvas Card Component - Updated to match API response
 const CanvasCard = ({
   canvas,
   onClick,
 }: {
   canvas: {
     id: number;
-    name: string;
-    thumbnail?: string;
-    createdAt: string;
-    size?: string;
+    user_id: number;
+    canvas_name: string;
+    canvas_url: string;
+    aspect_width: number;
+    aspect_height: number;
+    created_at: string;
+    updated_at: string;
   };
   onClick: (canvas: any) => void;
 }) => {
@@ -170,49 +173,33 @@ const CanvasCard = ({
     >
       <div className="aspect-video bg-gray-100 dark:bg-gray-700 rounded-t-lg overflow-hidden">
         <img
-          src={
-            canvas.thumbnail ||
-            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='150' viewBox='0 0 200 150'%3E%3Crect fill='%23f0f0f0' width='200' height='150'/%3E%3C/svg%3E"
-          }
-          alt={canvas.name}
+          src={canvas.canvas_url}
+          alt={canvas.canvas_name}
           className="w-full h-full object-cover"
+          onError={(e) => {
+            // Fallback to a placeholder if image fails to load
+            const target = e.target as HTMLImageElement;
+            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='150' viewBox='0 0 200 150'%3E%3Crect fill='%23f0f0f0' width='200' height='150'/%3E%3C/svg%3E";
+          }}
         />
       </div>
       <div className="p-4">
         <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-white truncate">
-          {canvas.name}
+          {canvas.canvas_name}
         </h3>
-        <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-          <div className="flex items-center gap-1">
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span>{new Date(canvas.createdAt).toLocaleDateString()}</span>
-          </div>
-          {canvas.size && (
-            <div className="flex items-center gap-1">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
-              <span>{canvas.size}</span>
-            </div>
-          )}
+        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+          <svg
+            className="w-4 h-4 mr-1"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span>{new Date(canvas.created_at).toLocaleDateString()}</span>
         </div>
       </div>
     </div>
@@ -229,19 +216,17 @@ const NewCanvasModal = ({
   onClose: () => void;
   onCreateCanvas: (canvas: any) => void;
 }) => {
-  const [canvasName, setCanvasName] = useState("");
   const [canvasType, setCanvasType] = useState("blank");
-  const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 });
   const [isCreating, setIsCreating] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  
   const handleSubmit = async () => {
-    if (!canvasName.trim()) return;
-
     setIsCreating(true);
     try {
       const temporaryId = Date.now();
+      const canvasName = `Canvas ${temporaryId}`; // Auto-generate name
 
       let thumbnailUrl: string | undefined = undefined;
       if (selectedFile) {
@@ -252,20 +237,27 @@ const NewCanvasModal = ({
         });
       }
 
+      // Use default dimensions
+      const dimensions = { width: 1920, height: 1080 };
+
       const localCanvas = {
         id: temporaryId,
-        name: canvasName,
-        thumbnail: thumbnailUrl,
-        createdAt: new Date().toISOString(),
-        size: `${dimensions.width}x${dimensions.height}`,
+        user_id: 0, // Temporary user ID
+        canvas_name: canvasName,
+        canvas_url: thumbnailUrl || "",
+        aspect_width: dimensions.width,
+        aspect_height: dimensions.height,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
       onCreateCanvas(localCanvas);
 
+      // Store canvas data for the canvas component
       if (typeof window !== "undefined") {
         const payload = {
           name: canvasName,
-          image: thumbnailUrl || null, // ✅ store image directly here
+          image: thumbnailUrl || null,
           width: dimensions.width,
           height: dimensions.height,
         };
@@ -273,11 +265,25 @@ const NewCanvasModal = ({
           `canvas_${temporaryId}`,
           JSON.stringify(payload)
         );
+        
+        // Also store background image data specifically for the canvas
+        if (thumbnailUrl) {
+          const backgroundData = {
+            id: temporaryId,
+            name: canvasName,
+            backgroundImage: thumbnailUrl,
+            width: dimensions.width,
+            height: dimensions.height
+          };
+          sessionStorage.setItem(
+            `canvas_background_${temporaryId}`,
+            JSON.stringify(backgroundData)
+          );
+        }
       }
 
       router.push(`/canvas/${temporaryId}?temp=1`);
       onClose();
-      setCanvasName("");
       setCanvasType("blank");
       setSelectedFile(null);
     } catch (error) {
@@ -291,12 +297,6 @@ const NewCanvasModal = ({
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-
-      // Auto-fill canvas name if not set
-      if (!canvasName.trim()) {
-        const baseName = file.name.replace(/\.[^/.]+$/, "");
-        setCanvasName(baseName);
-      }
       setCanvasType("upload");
 
       // Store image in sessionStorage
@@ -306,7 +306,7 @@ const NewCanvasModal = ({
           sessionStorage.setItem("uploaded_image", String(reader.result));
         }
       };
-      reader.readAsDataURL(file); // store as Base64 data URL
+      reader.readAsDataURL(file);
     }
   };
 
@@ -314,14 +314,14 @@ const NewCanvasModal = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
             Create New Canvas
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <svg
               className="w-6 h-6"
@@ -335,83 +335,73 @@ const NewCanvasModal = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-900 dark:text-white">
-              Canvas Name
+        <div className="p-6">
+          <div className="mb-6">
+            <label className="block text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+              Choose Canvas Type
             </label>
-            <input
-              type="text"
-              value={canvasName}
-              onChange={(e) => setCanvasName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              placeholder="Enter canvas name"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-3 text-gray-900 dark:text-white">
-              Canvas Type
-            </label>
-            <div className="space-y-3">
-              <label className="flex items-center">
+            <div className="space-y-4">
+              <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
                 <input
                   type="radio"
                   name="canvasType"
                   value="blank"
                   checked={canvasType === "blank"}
                   onChange={(e) => setCanvasType(e.target.value)}
-                  className="mr-3 text-blue-500 focus:ring-blue-500"
+                  className="mr-4 text-blue-500 focus:ring-blue-500"
                 />
-                <div className="flex items-center gap-3">
-                  <svg
-                    className="w-5 h-5 text-blue-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21,15 16,10 5,21" />
-                  </svg>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-blue-600 dark:text-blue-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21,15 16,10 5,21" />
+                    </svg>
+                  </div>
                   <div>
-                    <div className="font-medium text-gray-900 dark:text-white">
+                    <div className="font-semibold text-lg text-gray-900 dark:text-white">
                       Blank Canvas
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Start with a blank canvas
+                      Start with a clean white canvas
                     </div>
                   </div>
                 </div>
               </label>
 
-              <label className="flex items-center">
+              <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:border-green-300 dark:hover:border-green-600 transition-colors">
                 <input
                   type="radio"
                   name="canvasType"
                   value="upload"
                   checked={canvasType === "upload"}
                   onChange={(e) => setCanvasType(e.target.value)}
-                  className="mr-3 text-blue-500 focus:ring-blue-500"
+                  className="mr-4 text-green-500 focus:ring-green-500"
                 />
-                <div className="flex items-center gap-3">
-                  <svg
-                    className="w-5 h-5 text-green-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                    <polyline points="16,13 12,17 8,13" />
-                    <line x1="12" y1="17" x2="12" y2="9" />
-                  </svg>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                    <svg
+                      className="w-6 h-6 text-green-600 dark:text-green-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                      <polyline points="16,13 12,17 8,13" />
+                      <line x1="12" y1="17" x2="12" y2="9" />
+                    </svg>
+                  </div>
                   <div>
-                    <div className="font-medium text-gray-900 dark:text-white">
+                    <div className="font-semibold text-lg text-gray-900 dark:text-white">
                       Upload Image
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Start with an existing image
+                      Start with an existing image as background
                     </div>
                   </div>
                 </div>
@@ -419,45 +409,8 @@ const NewCanvasModal = ({
             </div>
           </div>
 
-          {canvasType === "blank" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-900 dark:text-white">
-                  Width
-                </label>
-                <input
-                  type="number"
-                  value={dimensions.width}
-                  onChange={(e) =>
-                    setDimensions((prev) => ({
-                      ...prev,
-                      width: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-900 dark:text-white">
-                  Height
-                </label>
-                <input
-                  type="number"
-                  value={dimensions.height}
-                  onChange={(e) =>
-                    setDimensions((prev) => ({
-                      ...prev,
-                      height: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-            </div>
-          )}
-
           {canvasType === "upload" && (
-            <div>
+            <div className="mb-6">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -468,10 +421,10 @@ const NewCanvasModal = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md p-6 text-center hover:border-blue-500 transition-colors"
+                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-green-500 dark:hover:border-green-400 transition-colors"
               >
                 <svg
-                  className="w-8 h-8 mx-auto mb-2 text-gray-400"
+                  className="w-12 h-12 mx-auto mb-3 text-gray-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -480,20 +433,21 @@ const NewCanvasModal = ({
                   <polyline points="16,13 12,17 8,13" />
                   <line x1="12" y1="17" x2="12" y2="9" />
                 </svg>
+                <div className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  {selectedFile ? "Image Selected" : "Choose an Image"}
+                </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {selectedFile
-                    ? selectedFile.name
-                    : "Click to upload an image"}
+                  {selectedFile ? selectedFile.name : "Click to browse files"}
                 </div>
               </button>
             </div>
           )}
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
               disabled={isCreating}
             >
               Cancel
@@ -501,12 +455,12 @@ const NewCanvasModal = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={isCreating || !canvasName.trim()}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2"
+              disabled={isCreating}
+              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2 transition-colors"
             >
               {isCreating && (
                 <svg
-                  className="w-4 h-4 animate-spin"
+                  className="w-5 h-5 animate-spin"
                   fill="none"
                   viewBox="0 0 24 24"
                 >
@@ -587,14 +541,32 @@ export default function Dashboard() {
     setCanvases((prev) => [newCanvas, ...prev]);
   };
 
-  const handleCanvasClick = (canvas: { id: number; name: string }) => {
-    console.log("Opening canvas:", canvas.name);
+  const handleCanvasClick = (canvas: { 
+    id: number; 
+    canvas_name: string;
+    canvas_url: string;
+    aspect_width: number;
+    aspect_height: number;
+  }) => {
+    console.log("Opening canvas:", canvas.canvas_name);
+    
+    // Store canvas background data in sessionStorage for the canvas component
+    const canvasData = {
+      id: canvas.id,
+      name: canvas.canvas_name,
+      backgroundImage: canvas.canvas_url,
+      width: canvas.aspect_width,
+      height: canvas.aspect_height
+    };
+    
+    sessionStorage.setItem(`canvas_background_${canvas.id}`, JSON.stringify(canvasData));
+    
     // Navigate to the canvas editor page with the canvas ID
     router.push(`/canvas/${canvas.id}`);
   };
 
   const filteredCanvases = canvases.filter((canvas) =>
-    (canvas.name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+    (canvas.canvas_name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -605,7 +577,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                PIC-AI-SSO
+                PIK-AI-SSO
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Your Creative Dashboard
