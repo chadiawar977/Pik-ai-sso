@@ -199,7 +199,7 @@ export default function FingerPainter() {
       };
 
       if (id) {
-        // 1) canvas-specific background data (API result cached in sessionStorage)
+        // 1) canvas-specific background data (API result cached in sessssionStorage)
         const backgroundData = sessionStorage.getItem(
           `canvas_background_${id}`
         );
@@ -1909,11 +1909,39 @@ export default function FingerPainter() {
             roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8);
             ctx.fill();
             ctx.stroke();
+            
+            // Draw icon instead of text
+            const iconSize = 24;
+            const iconX = btn.x + btn.w / 2;
+            const iconY = btn.y + btn.h / 2;
+            
+            // Set icon based on mode
+            let icon = "";
+            switch (btn.label) {
+              case "Idle":
+                icon = "✋";
+                break;
+              case "Brush":
+                icon = "✏️";
+                break;
+              case "Zoom":
+                icon = "🔍";
+                break;
+              case "ColorSelect":
+                icon = "🎨";
+                break;
+              case "Annotate":
+                icon = "📐";
+                break;
+            }
+            
+            // Draw icon
             ctx.fillStyle = "white";
-            ctx.font = "16px Inter, Arial, sans-serif";
+            ctx.font = `${iconSize}px Arial`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+            ctx.fillText(icon, iconX, iconY);
+            
             const hs = hoverStart[btn.label];
             if (hs) {
               const elapsed = Math.min(1000, performance.now() - hs);
@@ -1948,11 +1976,33 @@ export default function FingerPainter() {
               roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8);
               ctx.fill();
               ctx.stroke();
+              
+              // Draw icon instead of text
+              const iconSize = 20;
+              const iconX = btn.x + btn.w / 2;
+              const iconY = btn.y + btn.h / 2;
+              
+              // Set icon based on zoom mode
+              let icon = "";
+              switch (btn.label) {
+                case "ZoomIn":
+                  icon = "🔍➕";
+                  break;
+                case "ZoomOut":
+                  icon = "🔍➖";
+                  break;
+                case "Move":
+                  icon = "✋";
+                  break;
+              }
+              
+              // Draw icon
               ctx.fillStyle = "white";
-              ctx.font = "14px Inter, Arial, sans-serif";
+              ctx.font = `${iconSize}px Arial`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
-              ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+              ctx.fillText(icon, iconX, iconY);
+              
               const hs = zoomHoverStart[btn.label];
               if (hs) {
                 const elapsed = Math.min(1000, performance.now() - hs);
@@ -1988,11 +2038,36 @@ export default function FingerPainter() {
               roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8);
               ctx.fill();
               ctx.stroke();
+              
+              // Draw icon instead of text
+              const iconSize = 20;
+              const iconX = btn.x + btn.w / 2;
+              const iconY = btn.y + btn.h / 2;
+              
+              // Set icon based on shape type
+              let icon = "";
+              switch (btn.label) {
+                case "Rectangle":
+                  icon = "⬜";
+                  break;
+                case "Triangle":
+                  icon = "🔺";
+                  break;
+                case "Circle":
+                  icon = "⭕";
+                  break;
+                case "Line":
+                  icon = "📏";
+                  break;
+              }
+              
+              // Draw icon
               ctx.fillStyle = "white";
-              ctx.font = "14px Inter, Arial, sans-serif";
+              ctx.font = `${iconSize}px Arial`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
-              ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+              ctx.fillText(icon, iconX, iconY);
+              
               const hs = shapeHoverStart[btn.label];
               if (hs) {
                 const elapsed = Math.min(1000, performance.now() - hs);
@@ -2031,15 +2106,19 @@ export default function FingerPainter() {
             );
             ctx.fill();
             ctx.stroke();
+            
+            // Draw eraser icon instead of text
+            const iconSize = 20;
+            const iconX = ERASE_BTN.x + ERASE_BTN.w / 2;
+            const iconY = ERASE_BTN.y + ERASE_BTN.h / 2;
+            
+            // Draw eraser icon
             ctx.fillStyle = "white";
-            ctx.font = "14px Inter, Arial, sans-serif";
+            ctx.font = `${iconSize}px Arial`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(
-              "Erase",
-              ERASE_BTN.x + ERASE_BTN.w / 2,
-              ERASE_BTN.y + ERASE_BTN.h / 2
-            );
+            ctx.fillText("🧽", iconX, iconY);
+          
 
             if (eraseHoverStart) {
               const elapsed = Math.min(
@@ -2355,27 +2434,58 @@ export default function FingerPainter() {
 
           {/* Gestures Guide */}
           <div className="pt-4 border-t border-gray-600">
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">Available Gestures</h3>
-            <div className="space-y-2 text-xs text-gray-400">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🤏</span>
-                <span>Pinch (Index + Thumb) - Draw</span>
+            <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+              <span className="text-lg">🎨</span>
+              Gesture Controls
+            </h3>
+            <div className="space-y-3">
+              {/* Drawing Gesture */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🤏</span>
+                  <span className="text-sm text-gray-300">Pinch to draw</span>
+                </div>
+                <span className="text-2xl">✏️</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">✋</span>
-                <span>Open Palm - Erase</span>
+
+              {/* Erase Gesture */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">✋</span>
+                  <span className="text-sm text-gray-300">Open palm to erase</span>
+                </div>
+                <span className="text-2xl">🧽</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">👆</span>
-                <span>Index Finger - Select Tools</span>
+
+              {/* Tool Selection */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">👆</span>
+                  <span className="text-sm text-gray-300">Point to select</span>
+                </div>
+                <span className="text-2xl">🛠️</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🤏</span>
-                <span>Pinch in Camera - Move Camera</span>
+
+              {/* Camera Movement */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🤏</span>
+                  <span className="text-sm text-gray-300">Pinch camera to move</span>
+                </div>
+                <span className="text-2xl">📹</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">✌️</span>
-                <span>Two Fingers - Zoom/Move Canvas</span>
+
+
+              {/* Shape Tools */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🤏</span>
+                  <span className="text-sm text-gray-300">Pinch & drag for shapes</span>
+                </div>
+                <div className="flex gap-1">
+        
+                  <span className="text-lg">⭕</span>
+                </div>
               </div>
             </div>
           </div>

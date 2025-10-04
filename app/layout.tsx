@@ -8,7 +8,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "PIC-AI-SSO",
+  title: "PIK-AI-SSO",
   description: "Single Sign-On Authentication for PIC-AI",
 };
 

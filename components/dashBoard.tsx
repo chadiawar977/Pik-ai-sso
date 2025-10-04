@@ -1,7 +1,9 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 // Base URL for API calls
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
@@ -13,7 +15,6 @@ const UserProfileDropdown = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -48,27 +49,20 @@ const UserProfileDropdown = () => {
               Accept: "application/json",
             }
           : { Accept: "application/json" },
-        // Remove credentials if causing CORS issues
-        // credentials: 'include',
       });
 
       if (response.ok) {
-        // Clear any local storage or session data if needed
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("auth_token");
           sessionStorage.removeItem("token_type");
           sessionStorage.removeItem("auth_user");
         }
-
-        // Redirect to login page or home page after successful logout
         router.push("/");
       } else {
         console.error("Logout failed:", response.statusText);
-        // Handle error (show notification, etc.)
       }
     } catch (error) {
       console.error("Logout error:", error);
-      // Handle network error
     } finally {
       setIsLoggingOut(false);
       setIsOpen(false);
@@ -79,13 +73,13 @@ const UserProfileDropdown = () => {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800 focus:ring-blue-500 transition-colors"
+        className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center hover:shadow-lg hover:scale-105 transform transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         aria-label="User menu"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
         <svg
-          className="w-6 h-6 text-gray-600 dark:text-gray-300"
+          className="w-5 h-5 text-white"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -100,11 +94,15 @@ const UserProfileDropdown = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-20">
+        <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-2xl py-2 ring-1 ring-black ring-opacity-5 z-20 transform opacity-100 scale-100 transition-all duration-200">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">Account</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage your profile</p>
+          </div>
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors disabled:opacity-50"
+            className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors disabled:opacity-50 mt-1"
           >
             {isLoggingOut ? (
               <svg
@@ -141,7 +139,7 @@ const UserProfileDropdown = () => {
                 ></path>
               </svg>
             )}
-            {isLoggingOut ? "Logging out..." : "Logout"}
+            <span className="font-medium">{isLoggingOut ? "Logging out..." : "Logout"}</span>
           </button>
         </div>
       )}
@@ -149,7 +147,7 @@ const UserProfileDropdown = () => {
   );
 };
 
-// Canvas Card Component - Updated to match API response
+// Canvas Card Component
 const CanvasCard = ({
   canvas,
   onClick,
@@ -168,38 +166,43 @@ const CanvasCard = ({
 }) => {
   return (
     <div
-      className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer border border-gray-200 dark:border-gray-700"
+      className="group bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 cursor-pointer border border-gray-100 dark:border-gray-700 overflow-hidden transform hover:-translate-y-1"
       onClick={() => onClick(canvas)}
     >
-      <div className="aspect-video bg-gray-100 dark:bg-gray-700 rounded-t-lg overflow-hidden">
+      <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-t-2xl overflow-hidden relative">
         <img
           src={canvas.canvas_url}
           alt={canvas.canvas_name}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onError={(e) => {
-            // Fallback to a placeholder if image fails to load
             const target = e.target as HTMLImageElement;
-            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='150' viewBox='0 0 200 150'%3E%3Crect fill='%23f0f0f0' width='200' height='150'/%3E%3C/svg%3E";
+            target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='150' viewBox='0 0 200 150'%3E%3Crect fill='%23e5e7eb' width='200' height='150'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='sans-serif' font-size='16'%3ENo Image%3C/text%3E%3C/svg%3E";
           }}
         />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       </div>
-      <div className="p-4">
-        <h3 className="font-semibold text-lg mb-2 text-gray-900 dark:text-white truncate">
+      <div className="p-5">
+        <h3 className="font-bold text-lg mb-2 text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
           {canvas.canvas_name}
         </h3>
-        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-          <svg
-            className="w-4 h-4 mr-1"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <span>{new Date(canvas.created_at).toLocaleDateString()}</span>
+        <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-1.5">
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span className="text-xs font-medium">{new Date(canvas.created_at).toLocaleDateString()}</span>
+          </div>
+          <span className="text-xs px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full font-medium">
+            {canvas.aspect_width}×{canvas.aspect_height}
+          </span>
         </div>
       </div>
     </div>
@@ -226,7 +229,7 @@ const NewCanvasModal = ({
     setIsCreating(true);
     try {
       const temporaryId = Date.now();
-      const canvasName = `Canvas ${temporaryId}`; // Auto-generate name
+      const canvasName = `Canvas ${temporaryId}`;
 
       let thumbnailUrl: string | undefined = undefined;
       if (selectedFile) {
@@ -237,12 +240,11 @@ const NewCanvasModal = ({
         });
       }
 
-      // Use default dimensions
       const dimensions = { width: 1920, height: 1080 };
 
       const localCanvas = {
         id: temporaryId,
-        user_id: 0, // Temporary user ID
+        user_id: 0,
         canvas_name: canvasName,
         canvas_url: thumbnailUrl || "",
         aspect_width: dimensions.width,
@@ -253,7 +255,6 @@ const NewCanvasModal = ({
 
       onCreateCanvas(localCanvas);
 
-      // Store canvas data for the canvas component
       if (typeof window !== "undefined") {
         const payload = {
           name: canvasName,
@@ -266,7 +267,6 @@ const NewCanvasModal = ({
           JSON.stringify(payload)
         );
         
-        // Also store background image data specifically for the canvas
         if (thumbnailUrl) {
           const backgroundData = {
             id: temporaryId,
@@ -299,7 +299,6 @@ const NewCanvasModal = ({
       setSelectedFile(file);
       setCanvasType("upload");
 
-      // Store image in sessionStorage
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof window !== "undefined") {
@@ -313,15 +312,18 @@ const NewCanvasModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg transform transition-all animate-in slide-in-from-bottom-4 duration-300">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Create New Canvas
-          </h2>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              Create New Canvas
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Start your creative journey</p>
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors hover:rotate-90 transform duration-200"
           >
             <svg
               className="w-6 h-6"
@@ -329,34 +331,39 @@ const NewCanvasModal = ({
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" strokeWidth="2" strokeLinecap="round" />
+              <line x1="6" y1="6" x2="18" y2="18" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
         <div className="p-6">
           <div className="mb-6">
-            <label className="block text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+            <label className="block text-base font-semibold mb-4 text-gray-900 dark:text-white">
               Choose Canvas Type
             </label>
-            <div className="space-y-4">
-              <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+            <div className="space-y-3">
+              <label className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ${
+                canvasType === "blank" 
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md" 
+                  : "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600"
+              }`}>
                 <input
                   type="radio"
                   name="canvasType"
                   value="blank"
                   checked={canvasType === "blank"}
                   onChange={(e) => setCanvasType(e.target.value)}
-                  className="mr-4 text-blue-500 focus:ring-blue-500"
+                  className="mr-4 text-blue-500 focus:ring-blue-500 w-4 h-4"
                 />
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                     <svg
-                      className="w-6 h-6 text-blue-600 dark:text-blue-400"
+                      className="w-6 h-6 text-white"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      strokeWidth="2"
                     >
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
@@ -364,7 +371,7 @@ const NewCanvasModal = ({
                     </svg>
                   </div>
                   <div>
-                    <div className="font-semibold text-lg text-gray-900 dark:text-white">
+                    <div className="font-semibold text-base text-gray-900 dark:text-white">
                       Blank Canvas
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -374,34 +381,37 @@ const NewCanvasModal = ({
                 </div>
               </label>
 
-              <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:border-green-300 dark:hover:border-green-600 transition-colors">
+              <label className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ${
+                canvasType === "upload" 
+                  ? "border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md" 
+                  : "border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600"
+              }`}>
                 <input
                   type="radio"
                   name="canvasType"
                   value="upload"
                   checked={canvasType === "upload"}
                   onChange={(e) => setCanvasType(e.target.value)}
-                  className="mr-4 text-green-500 focus:ring-green-500"
+                  className="mr-4 text-green-500 focus:ring-green-500 w-4 h-4"
                 />
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
                     <svg
-                      className="w-6 h-6 text-green-600 dark:text-green-400"
+                      className="w-6 h-6 text-white"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      strokeWidth="2"
                     >
-                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                      <polyline points="16,13 12,17 8,13" />
-                      <line x1="12" y1="17" x2="12" y2="9" />
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                     </svg>
                   </div>
                   <div>
-                    <div className="font-semibold text-lg text-gray-900 dark:text-white">
+                    <div className="font-semibold text-base text-gray-900 dark:text-white">
                       Upload Image
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Start with an existing image as background
+                      Start with an existing image
                     </div>
                   </div>
                 </div>
@@ -421,23 +431,22 @@ const NewCanvasModal = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-green-500 dark:hover:border-green-400 transition-colors"
+                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-green-500 dark:hover:border-green-400 hover:bg-green-50/50 dark:hover:bg-green-900/10 transition-all duration-200"
               >
                 <svg
                   className="w-12 h-12 mx-auto mb-3 text-gray-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
+                  strokeWidth="1.5"
                 >
-                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                  <polyline points="16,13 12,17 8,13" />
-                  <line x1="12" y1="17" x2="12" y2="9" />
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                 </svg>
-                <div className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  {selectedFile ? "Image Selected" : "Choose an Image"}
+                <div className="text-base font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  {selectedFile ? "✓ Image Selected" : "Choose an Image"}
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {selectedFile ? selectedFile.name : "Click to browse files"}
+                  {selectedFile ? selectedFile.name : "PNG, JPG, GIF up to 10MB"}
                 </div>
               </button>
             </div>
@@ -447,7 +456,7 @@ const NewCanvasModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
+              className="flex-1 px-6 py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-semibold"
               disabled={isCreating}
             >
               Cancel
@@ -456,7 +465,7 @@ const NewCanvasModal = ({
               type="button"
               onClick={handleSubmit}
               disabled={isCreating}
-              className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold py-3 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2 transition-colors"
+              className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
             >
               {isCreating && (
                 <svg
@@ -497,7 +506,6 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Fetch canvases from API
   useEffect(() => {
     const fetchCanvases = async () => {
       try {
@@ -516,8 +524,6 @@ export default function Dashboard() {
               ? { Authorization: `${tokenType} ${authToken}` }
               : {}),
           },
-          // Remove credentials if causing CORS issues
-          // credentials: 'include',
         });
 
         if (response.ok) {
@@ -550,7 +556,6 @@ export default function Dashboard() {
   }) => {
     console.log("Opening canvas:", canvas.canvas_name);
     
-    // Store canvas background data in sessionStorage for the canvas component
     const canvasData = {
       id: canvas.id,
       name: canvas.canvas_name,
@@ -560,8 +565,6 @@ export default function Dashboard() {
     };
     
     sessionStorage.setItem(`canvas_background_${canvas.id}`, JSON.stringify(canvasData));
-    
-    // Navigate to the canvas editor page with the canvas ID
     router.push(`/canvas/${canvas.id}`);
   };
 
@@ -570,30 +573,42 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-montserrat">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900 font-montserrat">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl shadow-lg border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                PIK-AI-SSO
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Your Creative Dashboard
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg ring-2 ring-blue-500/20">
+                <Image
+                  src="/logo.png"
+                  alt="PIK-AI-SSO Logo"
+                  width={48}
+                  height={48}
+                  className="object-cover"
+                />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  PIK-AI-SSO
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Your Creative Dashboard
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2 transition-colors"
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2.5 px-5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
+                  strokeWidth="2"
                 >
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
@@ -612,10 +627,11 @@ export default function Dashboard() {
         <div className="mb-8">
           <div className="relative max-w-md">
             <svg
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              strokeWidth="2"
             >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.35-4.35" />
@@ -625,16 +641,16 @@ export default function Dashboard() {
               placeholder="Search your canvases..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 shadow-sm transition-all duration-200"
             />
           </div>
         </div>
 
         {/* Loading State */}
         {isLoading && (
-          <div className="text-center py-12">
+          <div className="text-center py-20">
             <svg
-              className="w-8 h-8 animate-spin mx-auto text-blue-500 mb-4"
+              className="w-12 h-12 animate-spin mx-auto text-blue-500 mb-4"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -652,7 +668,7 @@ export default function Dashboard() {
                 d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-gray-600 dark:text-gray-400 font-medium">
               Loading your canvases...
             </p>
           </div>
@@ -660,24 +676,27 @@ export default function Dashboard() {
 
         {/* Error State */}
         {error && (
-          <div className="text-center py-12">
-            <svg
-              className="w-16 h-16 mx-auto text-red-400 mb-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="15" y1="9" x2="9" y2="15" />
-              <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+          <div className="text-center py-20">
+            <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+              <svg
+                className="w-8 h-8 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
               Error Loading Canvases
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
             >
               Retry
             </button>
@@ -687,40 +706,49 @@ export default function Dashboard() {
         {/* Canvases Grid */}
         {!isLoading && !error && (
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Your Canvases ({filteredCanvases.length})
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Your Canvases{" "}
+                <span className="text-lg font-normal text-gray-500 dark:text-gray-400">
+                  ({filteredCanvases.length})
+                </span>
+              </h2>
+            </div>
 
             {filteredCanvases.length === 0 ? (
-              <div className="text-center py-12">
-                <svg
-                  className="w-16 h-16 mx-auto text-gray-400 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21,15 16,10 5,21" />
-                </svg>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+              <div className="text-center py-20">
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 rounded-2xl flex items-center justify-center">
+                  <svg
+                    className="w-10 h-10 text-blue-500 dark:text-blue-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21,15 16,10 5,21" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
                   {searchTerm ? "No canvases found" : "No canvases yet"}
                 </h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                   {searchTerm
-                    ? "Try adjusting your search terms"
-                    : "Create your first canvas to get started"}
+                    ? "Try adjusting your search terms to find what you're looking for"
+                    : "Create your first canvas to start bringing your ideas to life"}
                 </p>
                 {!searchTerm && (
                   <button
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2 mx-auto transition-colors"
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2 mx-auto transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-5 h-5"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
+                      strokeWidth="2"
                     >
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
