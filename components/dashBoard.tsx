@@ -293,20 +293,76 @@ const NewCanvasModal = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setCanvasType("upload");
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = () => {
+    setSelectedFile(file);
+    setCanvasType("upload");
+
+    // Helper to load PDF.js from CDN once
+    const ensurePdfJs = async () => {
+      if (typeof window === "undefined") return null as any;
+      if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Failed to load pdf.js"));
+        document.head.appendChild(script);
+      });
+      const pdfjsLib = (window as any).pdfjsLib;
+      if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+      return pdfjsLib;
+    };
+
+    // If it's a PDF, render its first page to an image and store it
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      try {
+        const pdfjsLib = await ensurePdfJs();
+        if (!pdfjsLib) throw new Error("pdfjsLib not available");
+
+        const blobUrl = URL.createObjectURL(file);
+        const loadingTask = pdfjsLib.getDocument({ url: blobUrl });
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("2D context not available");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const dataUrl = canvas.toDataURL("image/png");
+        URL.revokeObjectURL(blobUrl);
+
         if (typeof window !== "undefined") {
-          sessionStorage.setItem("uploaded_image", String(reader.result));
+          sessionStorage.setItem("uploaded_image", dataUrl);
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Failed to render PDF, falling back:", err);
+        // Fallback: store as object URL so downstream can try loading (may fail)
+        const fallbackUrl = URL.createObjectURL(file);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("uploaded_image", fallbackUrl);
+        }
+      }
+      return;
     }
+
+    // Otherwise treat as regular image
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("uploaded_image", String(reader.result));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   if (!isOpen) return null;
@@ -425,7 +481,7 @@ const NewCanvasModal = ({
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept="image/*"
+                accept="image/*,application/pdf"
                 className="hidden"
               />
               <button
@@ -446,7 +502,7 @@ const NewCanvasModal = ({
                   {selectedFile ? "✓ Image Selected" : "Choose an Image"}
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {selectedFile ? selectedFile.name : "PNG, JPG, GIF up to 10MB"}
+                  {selectedFile ? selectedFile.name : "PNG, JPG, GIF or PDF up to 10MB"}
                 </div>
               </button>
             </div>

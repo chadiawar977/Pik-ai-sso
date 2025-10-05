@@ -365,12 +365,23 @@ export default function FingerPainter() {
       const bgCanvas = backgroundCanvasRef.current;
       const drawCanvas = drawingCanvasRef.current;
 
-      // Create a completely new clean canvas for export
+      // Create a new clean canvas for export with downscaling to speed up save
+      const maxExportDim = 1920; // cap the longest side for faster export
+      const srcW = bgCanvas.width;
+      const srcH = bgCanvas.height;
+      const longest = Math.max(srcW, srcH);
+      const exportScale = longest > maxExportDim ? maxExportDim / longest : 1;
+      const exportW = Math.max(1, Math.round(srcW * exportScale));
+      const exportH = Math.max(1, Math.round(srcH * exportScale));
+
       const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = bgCanvas.width;
-      tempCanvas.height = bgCanvas.height;
+      tempCanvas.width = exportW;
+      tempCanvas.height = exportH;
       const ctx = tempCanvas.getContext("2d");
       if (!ctx) throw new Error("Failed to get 2D context");
+      ctx.imageSmoothingEnabled = true;
+      // medium looks decent and is faster than high on many devices
+      (ctx as any).imageSmoothingQuality = "medium";
 
       // Check if background canvas is tainted by trying to read its data
       let isBackgroundTainted = false;
@@ -443,8 +454,8 @@ export default function FingerPainter() {
           ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         }
       } else {
-        // Safe to copy background canvas
-        ctx.drawImage(bgCanvas, 0, 0);
+        // Safe to copy background canvas (scaled)
+        ctx.drawImage(bgCanvas, 0, 0, exportW, exportH);
       }
 
       // Check if drawing canvas is tainted
@@ -457,15 +468,15 @@ export default function FingerPainter() {
       }
 
       if (!isDrawingTainted) {
-        // Safe to copy drawing canvas
-        ctx.drawImage(drawCanvas, 0, 0);
+        // Safe to copy drawing canvas (scaled)
+        ctx.drawImage(drawCanvas, 0, 0, exportW, exportH);
       } else {
         console.warn("Drawing canvas is tainted, exporting without drawings");
       }
 
       // Export merged result
       const mergedBlob: Blob | null = await new Promise((resolve) =>
-        tempCanvas.toBlob((b) => resolve(b), "image/jpeg", 0.9)
+        tempCanvas.toBlob((b) => resolve(b), "image/jpeg", 0.8)
       );
 
       if (!mergedBlob) throw new Error("Failed to create blob from canvas");
@@ -480,25 +491,32 @@ export default function FingerPainter() {
 
       const canvasId = getCanvasId();
       const urlParams = new URLSearchParams(window.location.search);
-      const isTemp = urlParams.get("temp") === "1";
+      const isTempQuery = urlParams.get("temp") === "1";
+      const isTempSession = canvasId
+        ? !!sessionStorage.getItem(`canvas_${canvasId}`)
+        : false;
+      const isTemp = isTempQuery || isTempSession;
 
-      let apiUrl: string;
-      let method = "POST";
+      const makeRequest = async (useUpdate: boolean) => {
+        const apiUrl = useUpdate && canvasId && !isTemp
+          ? `${baseUrl}/api/users_canvases/${canvasId}/update`
+          : `${baseUrl}/api/users_canvases/`;
+        return fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `${tokenType} ${authToken}`,
+            Accept: "application/json",
+          },
+          body: formData,
+        });
+      };
 
-      if (canvasId && !isTemp) {
-        apiUrl = `${baseUrl}/api/users_canvases/${canvasId}/update`;
-      } else {
-        apiUrl = `${baseUrl}/api/users_canvases/`;
+      // Try update if not temp; otherwise create
+      let response = await makeRequest(true);
+      if ((isTemp || response.status === 404)) {
+        // Fallback to create when temp or update not found
+        response = await makeRequest(false);
       }
-
-      const response = await fetch(apiUrl, {
-        method,
-        headers: {
-          Authorization: `${tokenType} ${authToken}`,
-          Accept: "application/json",
-        },
-        body: formData,
-      });
 
       let result: any;
 
@@ -568,54 +586,54 @@ export default function FingerPainter() {
     }
   };
 
-  // const analyzeGesture = async () => {
-  //   try {
-  //     const frameBlob = await captureVideoFrame();
-  //     if (!frameBlob) return;
+  const analyzeGesture = async () => {
+    try {
+      const frameBlob = await captureVideoFrame();
+      if (!frameBlob) return;
 
-  //     const formData = new FormData();
-  //     formData.append("image", frameBlob, "frame.jpg");
+      const formData = new FormData();
+      formData.append("image", frameBlob, "frame.jpg");
 
-  //     const authToken = sessionStorage.getItem("auth_token");
-  //     const tokenType = sessionStorage.getItem("token_type") || "Bearer";
+      const authToken = sessionStorage.getItem("auth_token");
+      const tokenType = sessionStorage.getItem("token_type") || "Bearer";
 
-  //     const response = await fetch(`${baseUrl}/api/ai/analyze-gesture`, {
-  //       method: "POST",
-  //       headers: {
-  //         ...(authToken ? { Authorization: `${tokenType} ${authToken}` } : {}),
-  //       },
-  //       body: formData,
-  //     });
+      const response = await fetch(`${baseUrl}/api/ai/analyze-gesture`, {
+        method: "POST",
+        headers: {
+          ...(authToken ? { Authorization: `${tokenType} ${authToken}` } : {}),
+        },
+        body: formData,
+      });
 
-  //     if (!response.ok) {
-  //       console.error(`Gesture API error: ${response.status}`);
-  //       return;
-  //     }
+      if (!response.ok) {
+        console.error(`Gesture API error: ${response.status}`);
+        return;
+      }
 
-  //     const data = await response.json();
+      const data = await response.json();
 
-  //     if (data.gesture && data.gesture !== lastGestureRef.current) {
-  //       lastGestureRef.current = data.gesture;
-  //       console.log(data);
+      if (data.gesture && data.gesture !== lastGestureRef.current) {
+        lastGestureRef.current = data.gesture;
+        console.log(data);
 
-  //       const newMessage: GestureMessage = {
-  //         id: Date.now(),
-  //         gesture: data.gesture,
-  //         timestamp: Date.now(),
-  //       };
+        const newMessage: GestureMessage = {
+          id: Date.now(),
+          gesture: data.gesture,
+          timestamp: Date.now(),
+        };
 
-  //       setGestureMessages((prev) => [newMessage, ...prev.slice(0, 4)]);
+        setGestureMessages((prev) => [newMessage, ...prev.slice(0, 4)]);
 
-  //       setTimeout(() => {
-  //         setGestureMessages((prev) =>
-  //           prev.filter((msg) => msg.id !== newMessage.id)
-  //         );
-  //       }, 3000);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error analyzing gesture:", error);
-  //   }
-  // };
+        setTimeout(() => {
+          setGestureMessages((prev) =>
+            prev.filter((msg) => msg.id !== newMessage.id)
+          );
+        }, 3000);
+      }
+    } catch (error) {
+      console.error("Error analyzing gesture:", error);
+    }
+  };
 
   // Handle save functionality
   const handleSaveClick = () => {
@@ -646,22 +664,22 @@ export default function FingerPainter() {
   ]);
 
   // Gesture detection effect
-  // useEffect(() => {
-  //   if (isGestureEnabled && isLoaded) {
-  //     gestureIntervalRef.current = setInterval(analyzeGesture, 1000);
-  //   } else {
-  //     if (gestureIntervalRef.current) {
-  //       clearInterval(gestureIntervalRef.current);
-  //       gestureIntervalRef.current = null;
-  //     }
-  //   }
+  useEffect(() => {
+    if (isGestureEnabled && isLoaded) {
+      gestureIntervalRef.current = setInterval(analyzeGesture, 1000);
+    } else {
+      if (gestureIntervalRef.current) {
+        clearInterval(gestureIntervalRef.current);
+        gestureIntervalRef.current = null;
+      }
+    }
 
-  //   return () => {
-  //     if (gestureIntervalRef.current) {
-  //       clearInterval(gestureIntervalRef.current);
-  //     }
-  //   };
-  // }, [isGestureEnabled, isLoaded, baseUrl]);
+    return () => {
+      if (gestureIntervalRef.current) {
+        clearInterval(gestureIntervalRef.current);
+      }
+    };
+  }, [isGestureEnabled, isLoaded, baseUrl]);
 
   useEffect(() => {
     let mounted = true;
