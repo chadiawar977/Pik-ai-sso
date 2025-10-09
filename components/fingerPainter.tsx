@@ -1408,13 +1408,21 @@ export default function FingerPainter() {
           // regardless of whether a hand is detected
           if (results.image) {
             cameraCtx.save();
+            // Preserve aspect ratio (cover) while mirroring horizontally (no side bars)
+            const imgW = (results.image as any).videoWidth || (results.image as any).width || cameraCanvas.width;
+            const imgH = (results.image as any).videoHeight || (results.image as any).height || cameraCanvas.height;
+            const scale = Math.max(cameraCanvas.width / imgW, cameraCanvas.height / imgH);
+            const drawW = imgW * scale;
+            const drawH = imgH * scale;
+            const offsetX = (cameraCanvas.width - drawW) / 2;
+            const offsetY = (cameraCanvas.height - drawH) / 2;
             cameraCtx.scale(-1, 1);
             cameraCtx.drawImage(
               results.image,
-              -cameraCanvas.width,
-              0,
-              cameraCanvas.width,
-              cameraCanvas.height
+              -(offsetX + drawW),
+              offsetY,
+              drawW,
+              drawH
             );
             cameraCtx.restore();
           }
