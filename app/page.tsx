@@ -156,7 +156,18 @@ export default function Home() {
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 3000);
       } else {
-        setError(data.message || "Sign up failed. Please try again.");
+        // Prefer backend validation errors when present
+        if (data && typeof data === "object" && data.errors) {
+          const errors = data.errors as Record<string, string[] | string>;
+          const parts: string[] = [];
+          Object.entries(errors).forEach(([field, msgs]) => {
+            if (Array.isArray(msgs)) parts.push(...msgs);
+            else if (typeof msgs === "string") parts.push(msgs);
+          });
+          setError(parts.join("\n") || data.message || "Sign up failed.");
+        } else {
+          setError(data.message || "Sign up failed. Please try again.");
+        }
       }
     } catch (err) {
       console.error("Sign up error:", err);

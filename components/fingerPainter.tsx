@@ -19,7 +19,7 @@ interface GestureMessage {
   timestamp: number;
 }
 
-type Mode = "Idle" | "Brush" | "Zoom" | "ColorSelect" | "Annotate";
+type Mode = "Idle" | "Brush" | "Zoom" | "ColorSelect" | "Annotate" | "Keyboard";
 type ZoomMode = "ZoomIn" | "ZoomOut" | "Move";
 type ShapeMode = "Rectangle" | "Triangle" | "Circle" | "Line" | "None";
 
@@ -43,6 +43,50 @@ export default function FingerPainter() {
   const shapeModeRef = useRef<ShapeMode>("None");
   const [eraserActive, setEraserActive] = useState(false);
   const eraserActiveRef = useRef(false);
+
+  // Keyboard (ASL) mode state
+  const [keyboardText, setKeyboardText] = useState("");
+  const keyboardTextRef = useRef("");
+  const aslPollRef = useRef<any>(null);
+  const lastAslAtRef = useRef<number>(0);
+  const [isPlacingText, setIsPlacingText] = useState(false);
+  const isPlacingTextRef = useRef(false);
+  const [showAslModal, setShowAslModal] = useState(false);
+
+  // Arabic label mapping for ASL top_label
+  const ARABIC_MAP: Record<string, string> = {
+    SPACE: " ",
+    ain: "ع",
+    al: "ال",
+    aleff: "ا",
+    bb: "ب",
+    daad: "ض",
+    dal: "د",
+    dha: "ظ",
+    fa: "ف",
+    gaaf: "ق",
+    ghain: "غ",
+    ha: "ه",
+    haa: "ح",
+    jeem: "ج",
+    kaaf: "ك",
+    khaa: "خ",
+    laam: "ل",
+    meem: "م",
+    nun: "ن",
+    ra: "ر",
+    saad: "ص",
+    seen: "س",
+    sheen: "ش",
+    ta: "ت",
+    taa: "ط",
+    tha: "ث",
+    thal: "ذ",
+    toot: "ة",
+    waw: "و",
+    ya: "ي",
+    zay: "ز",
+  };
 
   // Features from first code
   const [backgroundImage, setBackgroundImage] =
@@ -753,6 +797,8 @@ export default function FingerPainter() {
     shapeModeRef.current = shapeMode;
     eraserActiveRef.current = eraserActive;
     cameraPositionRef.current = cameraPosition;
+    keyboardTextRef.current = keyboardText;
+    isPlacingTextRef.current = isPlacingText;
   }, [
     mode,
     zoomMode,
@@ -760,6 +806,8 @@ export default function FingerPainter() {
     shapeMode,
     eraserActive,
     cameraPosition,
+    keyboardText,
+    isPlacingText,
   ]);
 
   // Gesture detection effect
@@ -787,6 +835,48 @@ export default function FingerPainter() {
       stop();
     };
   }, [isGestureEnabled, isLoaded, baseUrl, gesturePollMs]);
+
+  // ASL Keyboard polling effect (1 Hz)
+  useEffect(() => {
+    const pollAsl = async () => {
+      if (modeRef.current !== "Keyboard") return;
+      if (!handDetectedRef.current) return; // don't poll if hand not detected
+      if (!lastLandmarksRef.current || lastLandmarksRef.current.length !== 21)
+        return;
+      try {
+        const lms = lastLandmarksRef.current as any[];
+        const x = lms.map((p: any) => p.x);
+        const y = lms.map((p: any) => p.y);
+        const z = lms.map((p: any) => p.z);
+        const res = await fetch("https://asl-model.pikaisso.com/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ x, y, z }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.top_label) {
+          const raw: string = String(data.top_label || "").trim();
+          const key = raw.toLowerCase();
+          const mapped =
+            (key in ARABIC_MAP ? ARABIC_MAP[key] : key === "space" ? " " : "");
+          if (!mapped) return; // skip unknown labels instead of appending romanized
+          const next = (keyboardTextRef.current || "") + mapped;
+          keyboardTextRef.current = next;
+          setKeyboardText(next);
+        }
+      } catch (e) {
+        // ignore transient errors
+      }
+    };
+
+    if (aslPollRef.current) clearInterval(aslPollRef.current);
+    aslPollRef.current = setInterval(pollAsl, 1000);
+    return () => {
+      if (aslPollRef.current) clearInterval(aslPollRef.current);
+      aslPollRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -917,6 +1007,7 @@ export default function FingerPainter() {
           Zoom: null,
           ColorSelect: null,
           Annotate: null,
+          Keyboard: null,
         };
 
         let selectionStart: { x: number; y: number } | null = null;
@@ -1081,6 +1172,7 @@ export default function FingerPainter() {
             "Zoom",
             "ColorSelect",
             "Annotate",
+            "Keyboard",
           ];
           const totalW = labels.length * BTN_W + (labels.length - 1) * BTN_PAD;
           let startX = Math.max(12, (newWidth - totalW) / 2);
@@ -1151,6 +1243,34 @@ export default function FingerPainter() {
 
         // --- MOUSE DRAG: Event Handlers ---
         const handleMouseDown = (e: MouseEvent) => {
+          if (isPlacingTextRef.current && modeRef.current === "Keyboard" && keyboardTextRef.current) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const world = screenToWorld(mouseX, mouseY);
+            drawingCtx.save();
+            drawingCtx.fillStyle = "#ffffff";
+            drawingCtx.strokeStyle = "#111827"; // slate-900 outline for contrast
+            drawingCtx.lineWidth = 2;
+            drawingCtx.font = `${Math.max(24, brushSize * 4)}px "Noto Naskh Arabic", Arial, sans-serif`;
+            // Right-to-left rendering
+            // Some browsers ignore direction; align and draw is enough for Arabic shaping
+            (drawingCtx as any).direction = "rtl";
+            drawingCtx.textAlign = "right";
+            drawingCtx.textBaseline = "middle";
+            const text = keyboardTextRef.current;
+            drawingCtx.fillText(text, world.x, world.y);
+            try { drawingCtx.strokeText(text, world.x, world.y); } catch {}
+            drawingCtx.restore();
+            // eslint-disable-next-line no-console
+            console.log("Placed text on canvas at", world.x, world.y, text);
+            // Force immediate redraw so user sees the placed text right away
+            applyTransform();
+            ctx.drawImage(drawingCanvas, 0, 0);
+            restoreTransform();
+            setIsPlacingText(false);
+            return; // consume
+          }
           const rect = canvas.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
           const mouseY = e.clientY - rect.top;
@@ -1202,8 +1322,9 @@ export default function FingerPainter() {
           }
         };
 
-        // Add Listeners
+        // Add Listeners (listen also on camera overlay to allow placing text over it)
         canvas.addEventListener("mousedown", handleMouseDown);
+        cameraCanvas.addEventListener("mousedown", handleMouseDown);
         document.addEventListener("mousemove", handleMouseMove); // Use document to allow dragging outside canvas
         document.addEventListener("mouseup", handleMouseUp); // Use document to release click anywhere
 
@@ -1230,6 +1351,8 @@ export default function FingerPainter() {
             y: y * scale + offsetY,
           };
         }
+
+        // Note: cleanup is defined at the end of init(); keep removal logic there
 
         function drawShapePreview(
           ctx: CanvasRenderingContext2D,
@@ -1431,6 +1554,8 @@ export default function FingerPainter() {
             setHandVisible(true);
             handDetectedRef.current = true;
             const lms = results.multiHandLandmarks[0];
+            // Update landmarks for ASL polling
+            lastLandmarksRef.current = lms;
             lastLandmarksRef.current = lms;
             const indexUp = isFingerUp(lms, 8, 6);
             const middleUp = isFingerUp(lms, 12, 10);
@@ -2113,6 +2238,9 @@ export default function FingerPainter() {
               case "Annotate":
                 icon = "📐";
                 break;
+            case "Keyboard":
+              icon = "⌨️";
+              break;
             }
             
             // Draw icon
@@ -2425,6 +2553,7 @@ export default function FingerPainter() {
           }
           // --- MOUSE DRAG: Remove listeners ---
           canvas.removeEventListener("mousedown", handleMouseDown);
+          cameraCanvas.removeEventListener("mousedown", handleMouseDown);
           document.removeEventListener("mousemove", handleMouseMove);
           document.removeEventListener("mouseup", handleMouseUp);
 
@@ -2667,6 +2796,20 @@ export default function FingerPainter() {
                   <span className="text-lg">⭕</span>
                 </div>
               </div>
+
+              {/* ASL Reference Link */}
+              <div className="flex items-center justify-between p-2 bg-gray-700/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🖼️</span>
+                  <span className="text-sm text-gray-300">Arabic Sign Language reference</span>
+                </div>
+                <button
+                  onClick={() => setShowAslModal(true)}
+                  className="text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded"
+                >
+                  View
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2675,7 +2818,11 @@ export default function FingerPainter() {
       <main className="flex-grow relative bg-gray-800" ref={stageContainerRef}>
         <div id="stage" className="absolute inset-0">
           <video ref={videoRef} style={{ display: "none" }} playsInline />
-          <canvas ref={canvasRef} className="w-full h-full block" />
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 w-full h-full block"
+            style={{ zIndex: 20 }}
+          />
           <canvas
             ref={cameraCanvasRef}
             width={240}
@@ -2684,10 +2831,70 @@ export default function FingerPainter() {
             style={{
               left: cameraPosition.x,
               top: cameraPosition.y,
-              zIndex: 10,
+              zIndex: 30,
             }}
           />
+
+          {mode === "Keyboard" && (
+            <div
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 border border-gray-700 rounded-lg p-3 w-[min(90%,640px)] backdrop-blur-sm"
+              style={{ zIndex: 20 }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-gray-300 text-sm font-medium flex items-center gap-2">
+                  <span>ASL Keyboard</span>
+                  <span className="text-xs text-gray-400">(1 Hz)</span>
+                </div>
+                <button
+                  className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+                  onClick={() => setKeyboardText("")}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="bg-black/40 rounded p-2 min-h-[48px] max-h-[120px] overflow-y-auto text-gray-100 text-base whitespace-pre-wrap break-words" style={{ direction: "rtl", textAlign: "right" }}>
+                {keyboardText || <span className="text-gray-500">ابدأ بالإشارة…</span>}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  className={`text-xs px-2 py-1 rounded ${
+                    isPlacingText
+                      ? "bg-blue-600 hover:bg-blue-500"
+                      : "bg-gray-700 hover:bg-gray-600"
+                  }`}
+                  onClick={() => setIsPlacingText(!isPlacingText)}
+                >
+                  {isPlacingText ? "Click on canvas to place" : "Place Text"}
+                </button>
+                <span className="text-xs text-gray-400">Click anywhere on canvas to add text</span>
+              </div>
+            </div>
+          )}
         </div>
+
+        {showAslModal && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 max-w-[90vw] max-h-[90vh] shadow-xl relative">
+              <button
+                onClick={() => setShowAslModal(false)}
+                className="absolute top-2 right-2 text-sm px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+              >
+                Close
+              </button>
+              <div className="overflow-auto max-w-[85vw] max-h-[80vh]">
+                <img
+                  src="/sign.png"
+                  alt="Arabic Sign Language Reference"
+                  className="block max-w-full h-auto"
+                  onError={(e) => {
+                    const img = e.currentTarget as HTMLImageElement;
+                    if (img.src.endsWith("/sign.png")) img.src = "/signs.png";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
