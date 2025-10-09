@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev ",
+    "gesture:venv": "python3 -m venv gesture_service/.venv",
+    "gesture:install": "gesture_service/.venv/bin/pip install -r gesture_service/requirements.txt",
+    "gesture:start": "GESTURE_MODEL_PATH=./gesture_xgb_L_feats.pkl gesture_service/.venv/bin/uvicorn gesture_service.main:app --host 0.0.0.0 --port 8000 --reload",
     "build": "next build --turbopack",
     "start": "next start"
   },

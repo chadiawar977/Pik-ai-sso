@@ -66,6 +66,71 @@ export default function FingerPainter() {
 
   const baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  // Call server-side proxy to avoid exposing backend URL to client
+  const gestureProxyUrl = "/api/gesture/predict";
+  const lastLandmarksRef = useRef<any[] | null>(null);
+  const gestureHistoryRef = useRef<{ g: string; t: number }[]>([]);
+  const stableGestureRef = useRef<string>("");
+  const lastStableEmitRef = useRef<number>(0);
+  // Tuning knobs (env-overridable)
+  const gesturePollMs = Math.max(
+    120,
+    Number(process.env.NEXT_PUBLIC_GESTURE_POLL_MS || 150) || 150
+  );
+  const gestureWindowMs = Math.max(
+    300,
+    Number(process.env.NEXT_PUBLIC_GESTURE_WINDOW_MS || 700) || 700
+  );
+  const consensusThreshold = Math.min(
+    0.9,
+    Math.max(0.4, Number(process.env.NEXT_PUBLIC_GESTURE_CONSENSUS || 0.55) || 0.55)
+  );
+  const fastSwitchCount = Math.max(
+    2,
+    Math.min(5, Number(process.env.NEXT_PUBLIC_GESTURE_FAST_N || 3) || 3)
+  );
+  const useLegacyGestureFallback =
+    (process.env.NEXT_PUBLIC_GESTURE_FALLBACK ?? "0") !== "0";
+  const SHOW_GESTURE_TOASTS = false;
+  const handDetectedRef = useRef<boolean>(false);
+  const shapePinchActiveRef = useRef<boolean>(false);
+  const shapePinchPrevRef = useRef<boolean>(false);
+  const smoothedMidpointRef = useRef<{ x: number; y: number } | null>(null);
+
+  const addGestureSample = (g: string) => {
+    const now = Date.now();
+    const history = gestureHistoryRef.current;
+    history.push({ g, t: now });
+    // Trim by time and max length
+    while (history.length > 25) history.shift();
+    while (history.length && now - history[0].t > gestureWindowMs) history.shift();
+  };
+
+  const computeStableGesture = (): string => {
+    const history = gestureHistoryRef.current;
+    if (history.length === 0) return stableGestureRef.current || "";
+    // Fast-switch: if last N predictions agree, switch immediately
+    const lastN = history.slice(-fastSwitchCount);
+    if (lastN.length >= fastSwitchCount) {
+      const allSame = lastN.every((s) => s.g === lastN[0].g);
+      if (allSame && lastN[0].g !== stableGestureRef.current) return lastN[0].g;
+    }
+    // Majority vote over recent window
+    const counts: Record<string, number> = {};
+    for (const s of history) counts[s.g] = (counts[s.g] || 0) + 1;
+    let best = "";
+    let bestCount = 0;
+    for (const k in counts) {
+      if (counts[k] > bestCount) {
+        best = k;
+        bestCount = counts[k];
+      }
+    }
+    const ratio = bestCount / history.length;
+    // Require consensus to switch
+    if (ratio >= consensusThreshold) return best;
+    return stableGestureRef.current || best;
+  };
 
   // Canvas ID handling
   const getCanvasId = () => {
@@ -588,15 +653,48 @@ export default function FingerPainter() {
 
   const analyzeGesture = async () => {
     try {
+      // Only poll when a hand is detected
+      if (!handDetectedRef.current) return;
+      // Prefer model landmarks endpoint when we have recent landmarks
+      if (lastLandmarksRef.current && lastLandmarksRef.current.length === 21) {
+        const points = normalizeLandmarks(lastLandmarksRef.current as any[]);
+        const response = await fetch(gestureProxyUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ points }),
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        // Real-time: act on latest model gesture immediately
+        if (data?.gesture) {
+          const gRaw = String(data.gesture);
+          const g = gRaw === "pinky" ? "pinch" : gRaw; // treat pinky as pinch
+          if (g !== stableGestureRef.current) {
+            stableGestureRef.current = g;
+            lastGestureRef.current = g;
+            if (SHOW_GESTURE_TOASTS) {
+              const now = Date.now();
+              const newMessage: GestureMessage = { id: now, gesture: g, timestamp: now };
+              setGestureMessages((prev) => [newMessage, ...prev.slice(0, 4)]);
+              setTimeout(() => {
+                setGestureMessages((prev) => prev.filter((msg) => msg.id !== newMessage.id));
+              }, 1000);
+            }
+          }
+        }
+        return;
+      }
+
+      // Optional fallback: legacy image-based endpoint if no landmarks yet
+      if (!useLegacyGestureFallback) return;
       const frameBlob = await captureVideoFrame();
       if (!frameBlob) return;
-
       const formData = new FormData();
       formData.append("image", frameBlob, "frame.jpg");
-
       const authToken = sessionStorage.getItem("auth_token");
       const tokenType = sessionStorage.getItem("token_type") || "Bearer";
-
       const response = await fetch(`${baseUrl}/api/ai/analyze-gesture`, {
         method: "POST",
         headers: {
@@ -604,35 +702,36 @@ export default function FingerPainter() {
         },
         body: formData,
       });
-
-      if (!response.ok) {
-        console.error(`Gesture API error: ${response.status}`);
-        return;
-      }
-
+      if (!response.ok) return; // suppress noisy errors
       const data = await response.json();
-
       if (data.gesture && data.gesture !== lastGestureRef.current) {
         lastGestureRef.current = data.gesture;
-        console.log(data);
-
-        const newMessage: GestureMessage = {
-          id: Date.now(),
-          gesture: data.gesture,
-          timestamp: Date.now(),
-        };
-
-        setGestureMessages((prev) => [newMessage, ...prev.slice(0, 4)]);
-
-        setTimeout(() => {
-          setGestureMessages((prev) =>
-            prev.filter((msg) => msg.id !== newMessage.id)
-          );
-        }, 3000);
+        if (SHOW_GESTURE_TOASTS) {
+          const newMessage: GestureMessage = { id: Date.now(), gesture: data.gesture, timestamp: Date.now() };
+          setGestureMessages((prev) => [newMessage, ...prev.slice(0, 4)]);
+          setTimeout(() => {
+            setGestureMessages((prev) =>
+              prev.filter((msg) => msg.id !== newMessage.id)
+            );
+          }, 3000);
+        }
       }
     } catch (error) {
       console.error("Error analyzing gesture:", error);
     }
+  };
+
+  const normalizeLandmarks = (landmarks: any[]): number[] => {
+    if (!landmarks || landmarks.length !== 21) return [];
+    const wrist = landmarks[0];
+    const translated = landmarks.map((lm: any) => ({
+      x: lm.x - wrist.x,
+      y: lm.y - wrist.y,
+      z: lm.z - wrist.z,
+    }));
+    const ref = translated[9];
+    const scale = Math.sqrt(ref.x * ref.x + ref.y * ref.y + ref.z * ref.z) || 1.0;
+    return translated.flatMap((lm: any) => [lm.x / scale, lm.y / scale, lm.z / scale]);
   };
 
   // Handle save functionality
@@ -665,21 +764,29 @@ export default function FingerPainter() {
 
   // Gesture detection effect
   useEffect(() => {
-    if (isGestureEnabled && isLoaded) {
-      gestureIntervalRef.current = setInterval(analyzeGesture, 1000);
-    } else {
+    const start = () => {
+      if (gestureIntervalRef.current) return;
+      if (isGestureEnabled && isLoaded && !document.hidden) {
+        gestureIntervalRef.current = setInterval(analyzeGesture, gesturePollMs);
+      }
+    };
+    const stop = () => {
       if (gestureIntervalRef.current) {
         clearInterval(gestureIntervalRef.current);
         gestureIntervalRef.current = null;
       }
-    }
-
-    return () => {
-      if (gestureIntervalRef.current) {
-        clearInterval(gestureIntervalRef.current);
-      }
     };
-  }, [isGestureEnabled, isLoaded, baseUrl]);
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
+  }, [isGestureEnabled, isLoaded, baseUrl, gesturePollMs]);
 
   useEffect(() => {
     let mounted = true;
@@ -728,6 +835,13 @@ export default function FingerPainter() {
 
         const PINCH_RATIO_THRESHOLD = 0.25;
         const Z_AXIS_THRESHOLD = 0.08;
+        // Relaxed proximity gate for allowing model "pinch" actions
+        const PINCH_PROXIMITY_RATIO = 0.55; // allow some gap between tips
+        // Hysteresis thresholds for shape pinch stability (relative to hand size)
+        const SHAPE_PINCH_START_RATIO = 0.60; // engage when closer than 60%
+        const SHAPE_PINCH_KEEP_RATIO = 0.70;  // disengage only when farther than 70%
+        // Cancel threshold: if tips go far apart, drop the in-progress shape
+        const SHAPE_CANCEL_RATIO = 1.10; // cancel when distance >= 110% of hand scale
 
         const video = videoRef.current!;
         const canvas = canvasRef.current!;
@@ -1290,9 +1404,26 @@ export default function FingerPainter() {
 
           const now = performance.now();
 
+          // Always render the camera feed if an image is available,
+          // regardless of whether a hand is detected
+          if (results.image) {
+            cameraCtx.save();
+            cameraCtx.scale(-1, 1);
+            cameraCtx.drawImage(
+              results.image,
+              -cameraCanvas.width,
+              0,
+              cameraCanvas.width,
+              cameraCanvas.height
+            );
+            cameraCtx.restore();
+          }
+
           if (results.multiHandLandmarks?.length) {
             setHandVisible(true);
+            handDetectedRef.current = true;
             const lms = results.multiHandLandmarks[0];
+            lastLandmarksRef.current = lms;
             const indexUp = isFingerUp(lms, 8, 6);
             const middleUp = isFingerUp(lms, 12, 10);
             const ringUp = isFingerUp(lms, 16, 14);
@@ -1312,6 +1443,15 @@ export default function FingerPainter() {
             const isPinching =
               pinchDistance < handScale * PINCH_RATIO_THRESHOLD &&
               zDiff < Z_AXIS_THRESHOLD;
+            const pinchProximity = pinchDistance < handScale * PINCH_PROXIMITY_RATIO;
+            const pinchRatio = handScale > 0 ? pinchDistance / handScale : 1;
+            // Update hysteresis-based shape pinch state
+            shapePinchPrevRef.current = shapePinchActiveRef.current;
+            if (!shapePinchActiveRef.current && pinchRatio <= SHAPE_PINCH_START_RATIO) {
+              shapePinchActiveRef.current = true;
+            } else if (shapePinchActiveRef.current && pinchRatio >= SHAPE_PINCH_KEEP_RATIO) {
+              shapePinchActiveRef.current = false;
+            }
 
             const isInCamera = isInsideCamera(ix, iy);
             // --- MOUSE DRAG: Add !isDraggingWithMouse to prevent conflict ---
@@ -1346,17 +1486,6 @@ export default function FingerPainter() {
             }
 
             if (results.image) {
-              cameraCtx.save();
-              cameraCtx.scale(-1, 1);
-              cameraCtx.drawImage(
-                results.image,
-                -cameraCanvas.width,
-                0,
-                cameraCanvas.width,
-                cameraCanvas.height
-              );
-              cameraCtx.restore();
-
               const mirrored = lms.map((p: any) => ({
                 x: (1 - p.x) * cameraCanvas.width,
                 y: p.y * cameraCanvas.height,
@@ -1466,28 +1595,24 @@ export default function FingerPainter() {
               }
 
               const currentZoomMode = zoomModeRef.current;
+              const modelPinch = (stableGestureRef.current || "") === "pinch";
+              const modelPinchAllowed = modelPinch && pinchProximity;
 
               if (
                 currentZoomMode === "ZoomIn" &&
-                isPinching &&
-                indexUp &&
-                thumbUp &&
+                modelPinchAllowed &&
                 !isInCamera
               ) {
                 scale = Math.min(scale * 1.05, 5);
               } else if (
                 currentZoomMode === "ZoomOut" &&
-                isPinching &&
-                indexUp &&
-                thumbUp &&
+                modelPinchAllowed &&
                 !isInCamera
               ) {
                 scale = Math.max(scale / 1.05, 0.2);
               } else if (
                 currentZoomMode === "Move" &&
-                isPinching &&
-                indexUp &&
-                thumbUp &&
+                modelPinchAllowed &&
                 !isInCamera
               ) {
                 const drawX = (ix + tx) / 2;
@@ -1514,14 +1639,8 @@ export default function FingerPainter() {
             const currentEraserActive = eraserActiveRef.current;
 
             if (currentMode === "Brush" && !isInCamera) {
-              if (
-                isPinching &&
-                indexUp &&
-                thumbUp &&
-                !middleUp &&
-                !ringUp &&
-                !pinkyUp
-              ) {
+              const modelWantsDraw = (stableGestureRef.current || "") === "pinch" && pinchProximity;
+              if (modelWantsDraw) {
                 const screenDrawX = (ix + tx) / 2;
                 const screenDrawY = (iy + ty) / 2;
                 const worldCoords = screenToWorld(screenDrawX, screenDrawY);
@@ -1659,14 +1778,30 @@ export default function FingerPainter() {
 
               if (
                 isDrawingShape &&
-                isPinching &&
+                shapePinchActiveRef.current &&
                 indexUp &&
                 thumbUp &&
                 shapeStart
               ) {
                 const currentX = (indexWorldCoords.x + thumbWorldCoords.x) / 2;
                 const currentY = (indexWorldCoords.y + thumbWorldCoords.y) / 2;
-                shapeEnd = { x: currentX, y: currentY };
+                // Cancel if tips go too far apart relative to hand size
+                if (pinchRatio >= SHAPE_CANCEL_RATIO) {
+                  isDrawingShape = false;
+                  shapeStart = null;
+                  shapeEnd = null;
+                  smoothedMidpointRef.current = null;
+                  if (tempShapeCtx) {
+                    tempShapeCtx.clearRect(0, 0, tempShapeCanvas!.width, tempShapeCanvas!.height);
+                  }
+                } else {
+                // Exponential smoothing to reduce jitter
+                const alpha = 0.25;
+                const prev = smoothedMidpointRef.current || { x: currentX, y: currentY };
+                const smoothX = prev.x + alpha * (currentX - prev.x);
+                const smoothY = prev.y + alpha * (currentY - prev.y);
+                smoothedMidpointRef.current = { x: smoothX, y: smoothY };
+                shapeEnd = { x: smoothX, y: smoothY };
 
                 if (tempShapeCtx) {
                   tempShapeCtx.clearRect(
@@ -1683,17 +1818,35 @@ export default function FingerPainter() {
                     brushColor
                   );
                 }
+                }
               }
 
+              // If pinch just released and it's a far-apart release, cancel instead of finalize
               if (
                 isDrawingShape &&
                 shapeStart &&
                 shapeEnd &&
-                ((isPinching &&
-                  indexUp &&
-                  thumbUp &&
-                  (middleUp || ringUp || pinkyUp)) ||
-                  (indexUp && thumbUp && middleUp && ringUp && pinkyUp))
+                (shapePinchPrevRef.current && !shapePinchActiveRef.current) &&
+                pinchRatio >= SHAPE_CANCEL_RATIO
+              ) {
+                isDrawingShape = false;
+                shapeStart = null;
+                shapeEnd = null;
+                smoothedMidpointRef.current = null;
+                if (tempShapeCtx) {
+                  tempShapeCtx.clearRect(0, 0, tempShapeCanvas!.width, tempShapeCanvas!.height);
+                }
+              } else if (
+                isDrawingShape &&
+                shapeStart &&
+                shapeEnd &&
+                (
+                  // only finalize if MediaPipe tip distance is not far (guarded by pinchRatio)
+                  ((shapePinchActiveRef.current && indexUp && thumbUp && (middleUp || ringUp || pinkyUp)) && pinchRatio < SHAPE_CANCEL_RATIO) ||
+                  ((indexUp && thumbUp && middleUp && ringUp && pinkyUp) && pinchRatio < SHAPE_CANCEL_RATIO) ||
+                  // on release, finalize only if not far
+                  ((shapePinchPrevRef.current && !shapePinchActiveRef.current) && pinchRatio < SHAPE_CANCEL_RATIO)
+                )
               ) {
                 finalizeShape(
                   shapeStart,
@@ -1721,7 +1874,7 @@ export default function FingerPainter() {
                 }
               }
 
-              if (isDrawingShape && !isPinching) {
+              if (isDrawingShape && !shapePinchActiveRef.current) {
                 isDrawingShape = false;
                 shapeStart = null;
                 shapeEnd = null;
@@ -1867,6 +2020,7 @@ export default function FingerPainter() {
             });
           } else {
             setHandVisible(false);
+            handDetectedRef.current = false;
           }
 
           applyTransform();
